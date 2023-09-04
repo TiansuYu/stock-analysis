@@ -1,9 +1,12 @@
+import logging
+
+import plotly.graph_objs as go
 from dash import Dash, dcc, html, Input, Output
 from dash.dependencies import State
+from pydantic import ValidationError
 
-from stock.stock import Stock, validate_ticker
-import plotly.graph_objs as go
-import logging
+from src.constants import XAXIS_CONFIG
+from stock.ticker_data import TickerData
 
 logger = logging.getLogger(__name__)
 app = Dash(__name__)
@@ -47,8 +50,11 @@ def _parse_tickers(tickers):
     [Input(EXTRA_OPTION, "value")],
     [State(TICKER, OPTIONS)])
 def update_options(value, existing_options):
-    if validate_ticker(value):
+    try:
+        TickerData.validate_ticker(value)
         existing_options += [value]
+    except (AssertionError, ValidationError):
+        logger.warning(f"Invalid ticker '{value}'")
     return existing_options
 
 
@@ -59,12 +65,12 @@ def display_time_series(tickers):
     fig = go.Figure()
     tickers = _parse_tickers(tickers)
     for ticker in tickers:
-        stock = Stock(ticker)
-        data = stock.get_data()
-        long_name = stock.long_name
-        fig.add_trace(go.Scatter(x=data.index, y=data["Close"], mode="lines", name=long_name))
+        ticker_data = TickerData(ticker=ticker)
+        fig.add_trace(
+            go.Scatter(x=ticker_data.data.index, y=ticker_data.data["Close"], mode="lines", name=ticker_data.long_name))
     fig.update_yaxes(tickprefix='$')
-    fig.update_layout(title="Stock price analysis", xaxis_title="Date", yaxis_title="Price", hovermode="x")
+    fig.update_layout(title="Stock price analysis", xaxis_title="Date", yaxis_title="Price", hovermode="x",
+                      xaxis=XAXIS_CONFIG)
     return fig
 
 
